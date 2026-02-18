@@ -8,10 +8,12 @@ import com.frejun.androidsoftphonesdk.api.ApiClient
 import com.frejun.androidsoftphonesdk.api.Permission
 import com.frejun.androidsoftphonesdk.api.RefreshRequest
 import com.frejun.androidsoftphonesdk.api.Role
+import com.frejun.androidsoftphonesdk.api.UpdateUserProfileRequest
 import com.frejun.androidsoftphonesdk.api.UserRolesResponse
 import com.frejun.androidsoftphonesdk.data.SipCredentials
 import com.frejun.androidsoftphonesdk.data.TokenPayload
 import com.frejun.androidsoftphonesdk.data.UserProfile
+import com.frejun.androidsoftphonesdk.exceptions.InvalidTokenException
 import com.frejun.androidsoftphonesdk.exceptions.UnauthorizedException
 import com.frejun.androidsoftphonesdk.storage.TokenStorage
 import java.nio.charset.StandardCharsets
@@ -31,7 +33,9 @@ internal class AuthManager(
 ) {
     private val TAG = "AuthManager"
     private val tokenStorage = TokenStorage(context)
-    private val apiService = ApiClient.create(tokenStorage, this::refreshAndRetry)
+    // Corrected: Pass the renamed and now-internal 'refreshAccessToken' method reference
+    private val apiService = ApiClient.create(tokenStorage, this::refreshAccessToken)
+    private var userProfile: UserProfile? = null
 
     init {
         Log.d(TAG+"Phase 1", "AuthManager initialized.")
@@ -43,18 +47,13 @@ internal class AuthManager(
         return url
     }
 
-    /**
-     * Exchanges the authorization code from the OAuth redirect for access and refresh tokens.
-     */
     suspend fun exchangeCodeForToken(code: String, email: String) {
         Log.i(TAG, "Exchanging authorization code for token for user: $email")
-        // --- FIX: Correctly create the Basic Auth header ---
         val credentials = "$clientId:$clientSecret"
         val encodedCredentials = "Basic " + Base64.encodeToString(
             credentials.toByteArray(StandardCharsets.UTF_8),
             Base64.NO_WRAP
         )
-        // ---------------------------------------------------
 
         try {
             val response = apiService.exchangeCodeForToken(code, encodedCredentials)
@@ -72,10 +71,31 @@ internal class AuthManager(
         }
     }
 
+    suspend fun validateAndSaveSession(payload: TokenPayload) {
+        val tokenStatus = isTokenValid(payload.accessToken)
+        var finalPayload = payload
+
+        if (tokenStatus == "EXPIRED") {
+            Log.w(TAG, "Provided access token is expired, attempting to refresh.")
+            val newTokens = refreshWithToken(payload.refreshToken)
+            if (newTokens != null) {
+                finalPayload = newTokens
+            } else {
+                logout() // Clear invalid session
+                throw UnauthorizedException("Token is expired and refresh failed.")
+            }
+        } else if (tokenStatus == "INVALID") {
+            logout() // Clear invalid session
+            throw InvalidTokenException("validateAndSaveSession", "The provided access token is invalid.")
+        }
+
+        tokenStorage.saveTokens(finalPayload)
+        validateUserPermissions(finalPayload.email)
+        Log.i(TAG, "Session validated and saved successfully.")
+    }
+
     suspend fun validateUserPermissions(email: String) {
         Log.i(TAG, "Validating user permissions for $email")
-
-        Log.i(TAG, "Auth: Retrieving user roles for validation...")
 
         val response: UserRolesResponse = try {
             apiService.retrieveUserRoles(email)
@@ -85,21 +105,13 @@ internal class AuthManager(
         }
 
         val rolesList: List<Role> = response.data ?: emptyList()
+        val allPermissions: List<Permission> = rolesList.flatMap { it.permissions }
 
-        val allPermissions: List<Permission> = rolesList.flatMap { role: Role ->
-            role.permissions ?: emptyList()
-        }
-
-        val hasSDKPermission = allPermissions.any { p: Permission ->
-            p.action == "integrations (iframe and sdk)"
-        }
+        val hasSDKPermission = allPermissions.any { it.action == "integrations (iframe and sdk)" }
 
         if (!hasSDKPermission) {
             Log.e(TAG, "Permission Denied: User does not have 'integrations (iframe and sdk)' permission.")
-
-            // Log the user out locally so they can't try again without re-authenticating
             logout()
-
             throw IllegalStateException("User does not have permission to use the SDK.")
         }
 
@@ -108,9 +120,15 @@ internal class AuthManager(
 
     fun isLoggedIn(): Boolean {
         val token = tokenStorage.getTokens()?.accessToken ?: return false
-        val isLoggedIn = !JWT(token).isExpired(10) // 10-second buffer
-        Log.d(TAG, "isLoggedIn check: $isLoggedIn")
-        return isLoggedIn
+        return isTokenValid(token) == "VALID"
+    }
+
+    private fun isTokenValid(token: String): String {
+        return try {
+            if (JWT(token).isExpired(10)) "EXPIRED" else "VALID"
+        } catch (e: Exception) {
+            "INVALID"
+        }
     }
 
     suspend fun getSipCredentials(): SipCredentials {
@@ -119,37 +137,43 @@ internal class AuthManager(
         return apiService.registerSoftphone(email)
     }
 
-    internal suspend fun refreshAccessToken(): Boolean {
-        return refreshAndRetry() // This is your existing logic in AuthManager
-    }
-
     internal fun getStoredTokens() = tokenStorage.getTokens()
 
     suspend fun getUserProfile(): UserProfile {
+        if (userProfile != null) return userProfile!!
+
         val email = tokenStorage.getTokens()?.email ?: throw UnauthorizedException("Not logged in")
         Log.i(TAG+"Phase 3", "Fetching user profile for $email")
         val response = apiService.getUserProfile(email)
-        Log.d(TAG+"Phase 3", "UserProfile Response: $response")
-        Log.i(TAG+"Phase 3","response data: ${response.data}");
         if (response.success) {
+            userProfile = response.data
             return response.data
         } else {
             throw RuntimeException("Failed to fetch user profile.")
         }
     }
 
+    suspend fun updatePrimaryVirtualNumber(virtualNumber: String): UserProfile {
+        val email = tokenStorage.getTokens()?.email ?: throw UnauthorizedException("Not logged in")
+        Log.i(TAG, "Updating primary virtual number to $virtualNumber for $email")
+
+        val response = apiService.updateUserProfile(email, UpdateUserProfileRequest(virtualNumber))
+        if (response.success) {
+            Log.i(TAG, "Successfully updated virtual number.")
+            userProfile = response.data
+            return response.data
+        } else {
+            throw RuntimeException("Failed to update virtual number.")
+        }
+    }
+
     suspend fun logout() {
         Log.i(TAG, "Logging out user.")
         tokenStorage.clearTokens()
+        userProfile = null
     }
 
-    /**
-     * The core token refresh logic. This is called by the ApiClient's Authenticator when a 401 is received.
-     * @return True if the refresh was successful, false otherwise.
-     */
-    private suspend fun refreshAndRetry(): Boolean {
-        Log.i(TAG, "Attempting to refresh tokens.")
-        val currentTokens = tokenStorage.getTokens() ?: return false
+    private suspend fun refreshWithToken(refreshToken: String): TokenPayload? {
         return try {
             val credentials = "$clientId:$clientSecret"
             val encodedCredentials = "Basic " + Base64.encodeToString(
@@ -158,25 +182,38 @@ internal class AuthManager(
             )
 
             val response = apiService.refreshAccessToken(
-                RefreshRequest(currentTokens.refreshToken),
+                RefreshRequest(refreshToken),
                 encodedCredentials
             )
 
             if (response.success) {
-                val newPayload = TokenPayload(response.access, response.refresh, currentTokens.email)
-                tokenStorage.saveTokens(newPayload)
-                Log.i(TAG, "Token refresh successful.")
-                // Notify the SDK (and in turn, the app) that tokens have changed.
-                onTokensRefreshed(newPayload)
-                true
+                val currentEmail = tokenStorage.getTokens()?.email ?: ""
+                TokenPayload(response.access, response.refresh, currentEmail)
             } else {
-                Log.w(TAG, "Token refresh failed according to API response. Logging out.")
-                logout()
-                false
+                null
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Exception during token refresh. Logging out.", e)
-            // If refresh fails (e.g., refresh token is invalid), log the user out.
+            null
+        }
+    }
+
+    /**
+     * The core token refresh logic. This is called by the ApiClient's Authenticator when a 401 is received.
+     * @return True if the refresh was successful, false otherwise.
+     */
+    internal suspend fun refreshAccessToken(): Boolean {
+        Log.i(TAG, "Attempting to refresh tokens.")
+        val currentTokens = tokenStorage.getTokens() ?: return false
+
+        val newPayload = refreshWithToken(currentTokens.refreshToken)
+
+        return if (newPayload != null) {
+            tokenStorage.saveTokens(newPayload)
+            Log.i(TAG, "Token refresh successful.")
+            onTokensRefreshed(newPayload)
+            true
+        } else {
+            Log.w(TAG, "Token refresh failed. Logging out.")
             logout()
             false
         }

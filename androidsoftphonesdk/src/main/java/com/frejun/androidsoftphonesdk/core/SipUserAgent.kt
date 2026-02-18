@@ -1,5 +1,3 @@
-// File: sip/AndroidSoftphoneSDK/src/main/java/com/frejun/androidsoftphonesdk/core/SipUserAgent.kt
-
 package com.frejun.androidsoftphonesdk.core
 
 import android.content.Context
@@ -14,11 +12,6 @@ import kotlinx.coroutines.*
 import org.pjsip.pjsua2.*
 import org.pjsip.pjsua2.pjsua2Constants.INVALID_ID
 
-/**
- * This class is a direct parallel to the UserAgent class in the sip.js example.
- * It manages the entire lifecycle of the PJSIP Endpoint, transport, and account registration.
- * All operations are managed within a dedicated single-threaded coroutine scope to ensure thread safety with PJSIP.
- */
 internal class SipUserAgent(private val context: Context) {
     private val TAG = "Softphone-SipUserAgent"
 
@@ -30,10 +23,7 @@ internal class SipUserAgent(private val context: Context) {
     private val maxRetryAttempts = 3
     private var currentSession: CallSession? = null
 
-    // Prevent the LogWriter from being garbage collected prematurely.
     private val logWriter = PjsipLogWriter()
-
-    // A dedicated single-threaded coroutine context for all PJSIP operations.
     private val sipDispatcher = newSingleThreadContext("SipWorkerThread")
     private val sipScope = CoroutineScope(sipDispatcher + SupervisorJob())
 
@@ -41,10 +31,6 @@ internal class SipUserAgent(private val context: Context) {
     private var edgeDomain: String? = null
     private var listener: SoftphoneListener? = null
 
-    /**
-     * Starts the entire SIP stack. This is the main entry point.
-     * Corresponds to the constructor and startUA() in the TypeScript example.
-     */
     fun start(creds: SipCredentials, domain: String, l: SoftphoneListener) {
         Log.i(TAG, "🚀 start() | User: ${creds.username} | Domain: $domain")
         this.sipCreds = creds
@@ -53,26 +39,10 @@ internal class SipUserAgent(private val context: Context) {
 
         sipScope.launch {
             try {
-                // Step 1: Create and initialize Endpoint
                 endpoint = Endpoint()
                 endpoint!!.libCreate()
 
                 val epConfig = EpConfig()
-
-                // --- STUN CONFIGURATION ---
-//                val stunServers = StringVector()
-//                stunServers.add("stun:stun.l.google.com:19302")
-//                stunServers.add("stun:stun1.l.google.com:19302")
-//                epConfig.uaConfig.stunServer = stunServers
-
-                // --- DNS RESOLVER CONFIGURATION (CRITICAL FIX) ---
-                // Explicitly set a public DNS server for PJSIP's resolver to use.
-                // This is crucial for resolving STUN server hostnames on some Android networks.
-//                val nameServers = StringVector()
-//                nameServers.add("8.8.8.8")
-//                epConfig.uaConfig.nameserver = nameServers
-                // ----------------------------------------------------
-
                 epConfig.uaConfig.threadCnt = 0
                 epConfig.uaConfig.mainThreadOnly = false
 
@@ -84,7 +54,7 @@ internal class SipUserAgent(private val context: Context) {
                 logConfig.decor = logConfig.decor and (pj_log_decoration.PJ_LOG_HAS_CR or pj_log_decoration.PJ_LOG_HAS_NEWLINE).inv().toLong()
 
                 endpoint!!.libInit(epConfig)
-                Log.d(TAG, "✔ PJSIP libInit() successful with STUN and DNS configured")
+                Log.d(TAG, "✔ PJSIP libInit() successful")
 
                 endpoint!!.libRegisterThread(Thread.currentThread().name)
                 Log.d(TAG, "✔ Thread registered successfully")
@@ -92,8 +62,7 @@ internal class SipUserAgent(private val context: Context) {
                 val tpConfig = TransportConfig()
                 tpConfig.port = 9080.toLong()
                 transportId = endpoint!!.transportCreate(pjsip_transport_type_e.PJSIP_TRANSPORT_TLS, tpConfig)
-                Log.i(TAG, "✔ TCP Transport created on port ${endpoint!!.transportGetInfo(transportId).localAddress}. ID: $transportId")
-
+                Log.i(TAG, "✔ TLS Transport created on port ${endpoint!!.transportGetInfo(transportId).localAddress}. ID: $transportId")
 
                 endpoint!!.libStart()
                 Log.i(TAG, "⭐ PJSIP libStart() successful. UA is now active.")
@@ -136,9 +105,14 @@ internal class SipUserAgent(private val context: Context) {
         val accCfg = AccountConfig()
         accCfg.idUri = "sip:${creds.username}@$domain:9080"
         accCfg.regConfig.registrarUri = "sip:$domain:9080;transport=tls"
-        accCfg.regConfig.timeoutSec = 20
+        accCfg.regConfig.timeoutSec = 600
 
-        // Enable STUN for this specific account for both SIP signaling and media.
+        val mediaConfig = accCfg.mediaConfig
+        mediaConfig.srtpUse = pjmedia_srtp_use.PJMEDIA_SRTP_OPTIONAL
+        mediaConfig.srtpSecureSignaling = 0
+        mediaConfig.rtcpMuxEnabled = true
+        mediaConfig.srtpOpt = SrtpOpt()
+
         accCfg.natConfig.sipStunUse = pjsua_stun_use.PJSUA_STUN_USE_DEFAULT
         accCfg.natConfig.mediaStunUse = pjsua_stun_use.PJSUA_STUN_USE_DEFAULT
 
@@ -147,16 +121,12 @@ internal class SipUserAgent(private val context: Context) {
             hName = "token"
             hValue = creds.accessToken
         })
-        Log.d(TAG, "Added custom 'token' header to REGISTER request.")
 
         val authCreds = accCfg.sipConfig.authCreds
-        Log.i(TAG, "🔐 Adding Digest authentication credentials.$authCreds")
         authCreds.clear()
         authCreds.add(AuthCredInfo("Digest", "*", creds.username, 0, creds.accessToken))
-        Log.i(TAG, "🔐 Adding Digest authentication credentials.$authCreds")
 
         account?.delete()
-
         account = PjsipAccount(
             onRegStateCallback = ::handleRegistrationState,
             onIncomingCallCallback = ::handleIncomingCall
@@ -197,14 +167,32 @@ internal class SipUserAgent(private val context: Context) {
     }
 
     private fun handleIncomingCall(pjsipCall: PjsipCall) {
+        Log.d(TAG, "handleIncomingCall: Processing new incoming call object from PjsipAccount.")
         val session = CallSession(pjsipCall)
         currentSession = session
         val remoteIdentity = try { pjsipCall.info.remoteUri } catch (e: Exception) { "Unknown" }
 
+        pjsipCall.onStateChanged = { call, state -> handleCallStateChange(call, state) }
         pjsipCall.onMediaStateCallback = { connectMedia(it) }
 
         MainScope().launch {
             listener?.onCallReceived(session, CallType.INCOMING, remoteIdentity)
+        }
+    }
+
+    private fun handleCallStateChange(call: PjsipCall, state: CallState) {
+        MainScope().launch {
+            if (currentSession?.pjsipCall?.id == call.id) {
+                Log.d(TAG, "Forwarding onCallStateChanged for call ${call.id} to app listener.")
+                listener?.onCallStateChanged(currentSession!!, state)
+
+                if (state == CallState.DISCONNECTED) {
+                    Log.i(TAG, "Call session ${call.id} has ended. Clearing currentSession reference to allow GC.")
+                    currentSession = null
+                }
+            } else {
+                Log.w(TAG, "Received state change for an unknown or stale call (ID: ${call.id})")
+            }
         }
     }
 
@@ -217,19 +205,21 @@ internal class SipUserAgent(private val context: Context) {
             val domain = edgeDomain ?: run {
                 Log.e(TAG, "makeCall failed: Domain is not set."); return@launch
             }
+            val creds = sipCreds ?: run { Log.e(TAG, "startRegistration failed: No credentials available"); return@launch }
 
-            val pjsipCall = PjsipCall(acc, -1,
-                onStateChanged = { call, state ->
-                    MainScope().launch { listener?.onCallStateChanged(CallSession(call), state) }
-                },
+            Log.d(TAG, "Creating new PjsipCall object for this session.")
+            val pjsipCall = PjsipCall(
+                acc, -1,
+                onStateChanged = { call, state -> handleCallStateChange(call, state) },
                 onMediaStateCallback = { connectMedia(it) }
             )
 
             currentSession = CallSession(pjsipCall)
             val opParam = CallOpParam(true)
 
+            Log.d(TAG, "Building custom SIP headers for the INVITE request.")
             val headers = SipHeaderVector().apply {
-                add(SipHeader().apply { hName = "token"; hValue = sipToken })
+                add(SipHeader().apply { hName = "token"; hValue = creds.accessToken })
                 add(SipHeader().apply { hName = "X-Transaction-Id"; hValue = meta.transactionId ?: "" })
                 add(SipHeader().apply { hName = "X-Job-Id"; hValue = meta.jobId ?: "" })
                 add(SipHeader().apply { hName = "X-Reference-Id"; hValue = meta.candidateId ?: "" })
@@ -237,15 +227,51 @@ internal class SipUserAgent(private val context: Context) {
             opParam.txOption = SipTxOption().apply { this.headers = headers }
 
             try {
-                val destUri = "sip:$number@$domain;transport=udp"
+                val destUri = "sip:$number@$domain:9080;transport=tls"
+                Log.i(TAG, "Constructed destination URI: $destUri")
+
                 withContext(Dispatchers.Main) {
                     listener?.onCallReceived(currentSession!!, CallType.OUTGOING, number)
                 }
+
+                Log.i(TAG, ">>> Invoking pjsipCall.makeCall() - Crossing into JNI/Native layer <<<")
                 pjsipCall.makeCall(destUri, opParam)
             } catch (e: Exception) {
                 Log.e(TAG, "❌ makeCall Exception", e)
                 pjsipCall.delete()
                 currentSession = null
+            }
+        }
+    }
+
+    // **NEW METHOD**
+    fun answerCall(session: CallSession) {
+        Log.i(TAG, "📞 Answering call with ID: ${session.callId}")
+        sipScope.launch {
+            try {
+                val prm = CallOpParam()
+                prm.statusCode = pjsip_status_code.PJSIP_SC_OK
+                session.pjsipCall.answer(prm)
+                Log.d(TAG, "pjsipCall.answer() invoked for call ID: ${session.callId}")
+            } catch (e: Exception) {
+                Log.e(TAG, "❌ answerCall Exception", e)
+            }
+        }
+    }
+
+    // **NEW METHOD**
+    fun hangupCall(session: CallSession) {
+        Log.i(TAG, "📞 Hanging up call with ID: ${session.callId}")
+        sipScope.launch {
+            try {
+                val prm = CallOpParam()
+                // For an incoming call that is ringing, use DECLINE. For all other cases,
+                // hangup() will use the appropriate SIP method (CANCEL, BYE).
+                prm.statusCode = pjsip_status_code.PJSIP_SC_DECLINE
+                session.pjsipCall.hangup(prm)
+                Log.d(TAG, "pjsipCall.hangup() invoked for call ID: ${session.callId}")
+            } catch (e: Exception) {
+                Log.e(TAG, "❌ hangupCall Exception", e)
             }
         }
     }
@@ -280,7 +306,7 @@ internal class SipUserAgent(private val context: Context) {
         Log.i(TAG, "Cleaning up SIP stack...")
         try {
             reRegisterAttempts = maxRetryAttempts + 1
-            if (account?.info?.regIsActive == true) {
+            if (account?.isValid == true && account?.info?.regIsActive == true) {
                 account?.setRegistration(false)
                 runBlocking { delay(500) }
             }

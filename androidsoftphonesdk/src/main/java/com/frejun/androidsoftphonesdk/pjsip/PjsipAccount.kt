@@ -3,6 +3,7 @@ package com.frejun.androidsoftphonesdk.pjsip
 import android.util.Log
 import com.frejun.androidsoftphonesdk.ConnectionState
 import org.pjsip.pjsua2.Account
+import org.pjsip.pjsua2.CallOpParam
 import org.pjsip.pjsua2.OnIncomingCallParam
 import org.pjsip.pjsua2.OnRegStateParam
 import org.pjsip.pjsua2.pjsip_status_code
@@ -31,6 +32,26 @@ internal class PjsipAccount(
         // When an incoming call arrives, we create a PjsipCall instance for it.
         // We pass null for the listeners initially; the SipManager will attach them.
         val call = PjsipCall(this, prm.callId, null, null)
+
+        try {
+            val opPrm = CallOpParam()
+            opPrm.statusCode = pjsip_status_code.PJSIP_SC_RINGING
+            call.answer(opPrm)
+            Log.i(TAG, "Sent 180 Ringing for call ${prm.callId}")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to send 180 Ringing", e)
+            // If we can't even send ringing, something is wrong, so we reject.
+            try {
+                val opPrm = CallOpParam()
+                opPrm.statusCode = pjsip_status_code.PJSIP_SC_INTERNAL_SERVER_ERROR
+                call.hangup(opPrm)
+            } catch (hangupE: Exception) {
+                Log.e(TAG, "Failed to hangup after ringing failure", hangupE)
+            }
+            call.delete()
+            return
+        }
+
         try {
             Log.d(TAG, "Incoming call details: From='${call.info.remoteUri}', To='${call.info.localUri}'")
         } catch (e: Exception) {
