@@ -1,6 +1,7 @@
 plugins {
     id 'com.android.library'
     id 'org.jetbrains.kotlin.android'
+    id 'maven-publish'
 }
 
 android {
@@ -57,4 +58,18 @@ dependencies {
     implementation("com.auth0.android:jwtdecode:2.0.2")
 
     implementation("androidx.browser:browser:1.9.0")
+}
+
+afterEvaluate {
+    publishing {
+        publications {
+            release(MavenPublication){
+                from(components["release"])
+
+                groupId "com.frejun.androidsoftphonesdk"
+                artifactId "androidsoftphonesdk"
+                version "1.0.0"
+            }
+        }
+    }
 }
