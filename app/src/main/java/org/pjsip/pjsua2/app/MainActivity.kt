@@ -75,6 +75,22 @@ class MainActivity : AppCompatActivity(), SoftphoneListener {
         }
     }
 
+    override fun onResume() {
+        super.onResume()
+        // Always set this activity as the current listener when it becomes active.
+        Log.d(TAG, "onResume: Setting MainActivity as the listener.")
+        SoftphoneSDK.setListener(this)
+    }
+
+    override fun onPause() {
+        super.onPause()
+        // Clear the listener when the activity is no longer in the foreground
+        // to prevent memory leaks and callbacks to a non-visible UI.
+        Log.d(TAG, "onPause: Clearing the listener.")
+        SoftphoneSDK.setListener(null)
+    }
+
+
     @RequiresApi(Build.VERSION_CODES.O)
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
@@ -149,6 +165,7 @@ class MainActivity : AppCompatActivity(), SoftphoneListener {
                 CallUiState.IDLE -> {
                     dialerCard.visibility = View.VISIBLE
                     callCard.visibility = View.GONE
+                    activeCallSession = null
                 }
                 CallUiState.INCOMING -> {
                     dialerCard.visibility = View.GONE

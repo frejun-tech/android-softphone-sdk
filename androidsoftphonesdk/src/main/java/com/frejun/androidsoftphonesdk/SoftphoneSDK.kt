@@ -22,10 +22,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 
-/**
- * Main public entry point for the Softphone SDK.
- * This is a singleton object.
- */
 object SoftphoneSDK {
 
     private const val TAG = "SoftphoneSDK"
@@ -98,11 +94,17 @@ object SoftphoneSDK {
         return authManager.isLoggedIn()
     }
 
+    fun setListener(listener: SoftphoneListener?) {
+        if (!isInitialized) return
+        this.appListener = listener
+        sipManager.setListener(listener)
+    }
+
     @RequiresApi(Build.VERSION_CODES.O)
     suspend fun start(listener: SoftphoneListener) {
         if (!isInitialized) throw SdkNotInitializedException()
         Log.i(TAG, "start() called.")
-        this.appListener = listener
+        setListener(listener)
         if (!authManager.isLoggedIn()) {
             handleAuthFailure("Start failed: User is not logged in.")
             return
@@ -113,8 +115,6 @@ object SoftphoneSDK {
                 val profile = authManager.getUserProfile()
                 val sipCreds = authManager.getSipCredentials()
                 currentEdgeDomain = profile.edgeDomain
-
-                sipManager.setListener(listener)
 
                 val serviceIntent = Intent(appContext, SoftphoneService::class.java).apply {
                     putExtra(SoftphoneService.EXTRA_SIP_CREDS, sipCreds)
@@ -165,25 +165,15 @@ object SoftphoneSDK {
         }
     }
 
-    /**
-     * Answers an incoming call.
-     * @param session The active call session to answer.
-     */
     fun answerCall(session: CallSession?) {
         val callSession = session ?: return
         Log.i(TAG, "answerCall() initiated for call ID: ${callSession.callId}")
-        // **FIX**: Delegate to SipManager instead of launching a coroutine
         sipManager.answerCall(callSession)
     }
 
-    /**
-     * Hangs up or rejects a call.
-     * @param session The active call session to terminate.
-     */
     fun hangupCall(session: CallSession?) {
         val callSession = session ?: return
         Log.i(TAG, "hangupCall() initiated for call ID: ${callSession.callId}")
-        // **FIX**: Delegate to SipManager instead of launching a coroutine
         sipManager.hangupCall(callSession)
     }
 

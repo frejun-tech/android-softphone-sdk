@@ -29,13 +29,18 @@ internal class SipUserAgent(private val context: Context) {
 
     private var sipCreds: SipCredentials? = null
     private var edgeDomain: String? = null
-    private var listener: SoftphoneListener? = null
+    var listener: SoftphoneListener? = null
+        private set
 
-    fun start(creds: SipCredentials, domain: String, l: SoftphoneListener) {
+    fun setListener(l: SoftphoneListener?) {
+        Log.d(TAG, "Listener updated in SipUserAgent.")
+        this.listener = l
+    }
+
+    fun start(creds: SipCredentials, domain: String) {
         Log.i(TAG, "🚀 start() | User: ${creds.username} | Domain: $domain")
         this.sipCreds = creds
         this.edgeDomain = domain
-        this.listener = l
 
         sipScope.launch {
             try {
@@ -46,9 +51,14 @@ internal class SipUserAgent(private val context: Context) {
                 epConfig.uaConfig.threadCnt = 0
                 epConfig.uaConfig.mainThreadOnly = false
 
+                val uaConfig = epConfig.uaConfig
+                val stunServers = StringVector()
+                stunServers.add("stun.l.google.com:19302")
+                uaConfig.stunServer = stunServers
+
                 val logConfig = epConfig.logConfig
-                logConfig.level = 4
-                logConfig.consoleLevel = 4
+                logConfig.level = 6
+                logConfig.consoleLevel = 6
                 logConfig.msgLogging = 1
                 logConfig.writer = logWriter
                 logConfig.decor = logConfig.decor and (pj_log_decoration.PJ_LOG_HAS_CR or pj_log_decoration.PJ_LOG_HAS_NEWLINE).inv().toLong()
@@ -68,7 +78,7 @@ internal class SipUserAgent(private val context: Context) {
                 Log.i(TAG, "⭐ PJSIP libStart() successful. UA is now active.")
 
                 withContext(Dispatchers.Main) {
-                    l.onConnectionStateChanged("UserAgentState", "Connected", false)
+                    listener?.onConnectionStateChanged("UserAgentState", "Connected", false)
                 }
 
                 startRegistration()
@@ -86,7 +96,7 @@ internal class SipUserAgent(private val context: Context) {
                 } else {
                     Log.e(TAG, "❌ FATAL: SIP worker coroutine crashed", e)
                     withContext(Dispatchers.Main) {
-                        l.onConnectionStateChanged("UserAgentState", "Disconnected", true, e.message)
+                        listener?.onConnectionStateChanged("UserAgentState", "Disconnected", true, e.message)
                     }
                 }
             } finally {
@@ -113,6 +123,7 @@ internal class SipUserAgent(private val context: Context) {
         mediaConfig.rtcpMuxEnabled = true
         mediaConfig.srtpOpt = SrtpOpt()
 
+        // Enable STUN for both SIP and Media for this account
         accCfg.natConfig.sipStunUse = pjsua_stun_use.PJSUA_STUN_USE_DEFAULT
         accCfg.natConfig.mediaStunUse = pjsua_stun_use.PJSUA_STUN_USE_DEFAULT
 
@@ -244,7 +255,6 @@ internal class SipUserAgent(private val context: Context) {
         }
     }
 
-    // **NEW METHOD**
     fun answerCall(session: CallSession) {
         Log.i(TAG, "📞 Answering call with ID: ${session.callId}")
         sipScope.launch {
@@ -259,14 +269,11 @@ internal class SipUserAgent(private val context: Context) {
         }
     }
 
-    // **NEW METHOD**
     fun hangupCall(session: CallSession) {
         Log.i(TAG, "📞 Hanging up call with ID: ${session.callId}")
         sipScope.launch {
             try {
                 val prm = CallOpParam()
-                // For an incoming call that is ringing, use DECLINE. For all other cases,
-                // hangup() will use the appropriate SIP method (CANCEL, BYE).
                 prm.statusCode = pjsip_status_code.PJSIP_SC_DECLINE
                 session.pjsipCall.hangup(prm)
                 Log.d(TAG, "pjsipCall.hangup() invoked for call ID: ${session.callId}")

@@ -11,32 +11,31 @@ internal class SipManager(private val context: Context) {
     private var userAgent: SipUserAgent? = null
     private var listener: SoftphoneListener? = null
 
-    fun setListener(l: SoftphoneListener) {
+    fun setListener(l: SoftphoneListener?) {
         this.listener = l
+        userAgent?.setListener(l)
     }
 
     fun isStarted(): Boolean = (userAgent != null)
 
     fun start(sipCreds: SipCredentials, edgeDomain: String) {
         Log.i(TAG, "start: Initializing SIP flow")
-        val l = listener ?: run {
-            Log.e(TAG, "start: FAILED. No listener attached.")
-            return
-        }
 
         if (userAgent == null) {
             Log.i(TAG, "start: Creating and starting new SipUserAgent")
             userAgent = SipUserAgent(context)
-            userAgent!!.start(sipCreds, edgeDomain, l)
+            userAgent!!.setListener(this.listener)
+            userAgent!!.start(sipCreds, edgeDomain)
         } else {
             Log.w(TAG, "start: SipUserAgent already initialized.")
+            userAgent!!.setListener(this.listener)
+            userAgent!!.start(sipCreds, edgeDomain)
         }
     }
 
     suspend fun restart(sipCreds: SipCredentials, edgeDomain: String) {
         Log.i(TAG, "Restarting SIP flow for new edge domain: $edgeDomain")
         stop()
-        // Delay to ensure resources are released
         kotlinx.coroutines.delay(500)
         start(sipCreds, edgeDomain)
     }
@@ -47,13 +46,11 @@ internal class SipManager(private val context: Context) {
             ?: Log.e(TAG, "makeCall: FAILED. UserAgent is not started.")
     }
 
-    // **NEW METHOD**
     fun answerCall(session: CallSession) {
         userAgent?.answerCall(session)
             ?: Log.e(TAG, "answerCall: FAILED. UserAgent is not started.")
     }
 
-    // **NEW METHOD**
     fun hangupCall(session: CallSession) {
         userAgent?.hangupCall(session)
             ?: Log.e(TAG, "hangupCall: FAILED. UserAgent is not started.")
