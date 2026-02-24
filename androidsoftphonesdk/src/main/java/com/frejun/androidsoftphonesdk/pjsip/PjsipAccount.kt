@@ -36,6 +36,11 @@ internal class PjsipAccount(
         try {
             val opPrm = CallOpParam()
             opPrm.statusCode = pjsip_status_code.PJSIP_SC_RINGING
+
+            val callSetting = opPrm.opt
+            callSetting.videoCount = 0
+            callSetting.textCount = 0
+
             call.answer(opPrm)
             Log.i(TAG, "Sent 180 Ringing for call ${prm.callId}")
         } catch (e: Exception) {

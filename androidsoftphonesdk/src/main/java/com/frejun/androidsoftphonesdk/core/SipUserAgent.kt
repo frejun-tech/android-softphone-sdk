@@ -40,7 +40,7 @@ internal class SipUserAgent(private val context: Context) {
     fun start(creds: SipCredentials, domain: String) {
         Log.i(TAG, "🚀 start() | User: ${creds.username} | Domain: $domain")
         this.sipCreds = creds
-        this.edgeDomain = domain
+        this.edgeDomain = "sip.sg.frejun.com"
 
         sipScope.launch {
             try {
@@ -48,8 +48,8 @@ internal class SipUserAgent(private val context: Context) {
                 endpoint!!.libCreate()
 
                 val epConfig = EpConfig()
-                epConfig.uaConfig.threadCnt = 0
-                epConfig.uaConfig.mainThreadOnly = false
+                epConfig.uaConfig.threadCnt = 1
+//                epConfig.uaConfig.mainThreadOnly = false
 
                 val uaConfig = epConfig.uaConfig
                 val stunServers = StringVector()
@@ -76,6 +76,23 @@ internal class SipUserAgent(private val context: Context) {
 
                 endpoint!!.libStart()
                 Log.i(TAG, "⭐ PJSIP libStart() successful. UA is now active.")
+
+                // Disable all video codecs
+                val videoCodecs = endpoint!!.videoCodecEnum2()
+                for (i in 0 until videoCodecs.size) {
+                    Log.i(TAG,"Disabling video codec: ${videoCodecs[i].codecId}");
+                    endpoint!!.videoCodecSetPriority(videoCodecs[i].codecId, 0)
+                }
+
+                // Disable T.140 and RED text codecs
+                val allCodecs = endpoint!!.codecEnum2()
+                for (i in 0 until allCodecs.size) {
+                    Log.i(TAG,"Disabling codec: ${allCodecs[i].codecId}");
+                    val codecId = allCodecs[i].codecId
+                    if (codecId.startsWith("t140") || codecId.startsWith("red")) {
+                        endpoint!!.codecSetPriority(codecId, 0)
+                    }
+                }
 
                 withContext(Dispatchers.Main) {
                     listener?.onConnectionStateChanged("UserAgentState", "Connected", false)
@@ -123,7 +140,6 @@ internal class SipUserAgent(private val context: Context) {
         mediaConfig.rtcpMuxEnabled = true
         mediaConfig.srtpOpt = SrtpOpt()
 
-        // Enable STUN for both SIP and Media for this account
         accCfg.natConfig.sipStunUse = pjsua_stun_use.PJSUA_STUN_USE_DEFAULT
         accCfg.natConfig.mediaStunUse = pjsua_stun_use.PJSUA_STUN_USE_DEFAULT
 
@@ -227,6 +243,9 @@ internal class SipUserAgent(private val context: Context) {
 
             currentSession = CallSession(pjsipCall)
             val opParam = CallOpParam(true)
+            val callSetting = opParam.opt
+            callSetting.videoCount = 0
+            callSetting.textCount = 0
 
             Log.d(TAG, "Building custom SIP headers for the INVITE request.")
             val headers = SipHeaderVector().apply {
@@ -261,6 +280,11 @@ internal class SipUserAgent(private val context: Context) {
             try {
                 val prm = CallOpParam()
                 prm.statusCode = pjsip_status_code.PJSIP_SC_OK
+
+                val callSetting = prm.opt
+                callSetting.videoCount = 0
+                callSetting.textCount = 0
+
                 session.pjsipCall.answer(prm)
                 Log.d(TAG, "pjsipCall.answer() invoked for call ID: ${session.callId}")
             } catch (e: Exception) {

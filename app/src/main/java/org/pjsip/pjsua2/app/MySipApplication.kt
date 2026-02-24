@@ -18,8 +18,8 @@ class MySipApplication : Application() {
         // Initialize the SDK once when the application starts
         SoftphoneSDK.initialize(
             context = this,
-            clientId = "EfdeS7KOU861D6ntSAnAwLOfPYZER5ctmcQcyZN9",       // <-- IMPORTANT: Replace with your actual Client ID
-            clientSecret = "pbkdf2_sha256\$390000\$hr3fUqhq0HkkZgTbgwgsxg\$jPrGIMyMRgDrLyTZoeWXsLeh45RgRQiwVLDaW5vFuw0="  // <-- IMPORTANT: Replace with your actual Client Secret
+            clientId = "EfdeS7KOU861D6ntSAnAwLOfPYZER5ctmcQcyZN9",
+            clientSecret = "pbkdf2_sha256\$390000\$hr3fUqhq0HkkZgTbgwgsxg\$jPrGIMyMRgDrLyTZoeWXsLeh45RgRQiwVLDaW5vFuw0="
         )
     }
 }
