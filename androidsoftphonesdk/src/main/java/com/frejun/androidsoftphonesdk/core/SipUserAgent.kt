@@ -143,6 +143,16 @@ internal class SipUserAgent(private val context: Context) {
         accCfg.natConfig.sipStunUse = pjsua_stun_use.PJSUA_STUN_USE_DEFAULT
         accCfg.natConfig.mediaStunUse = pjsua_stun_use.PJSUA_STUN_USE_DEFAULT
 
+        // ICE configuration: limit candidates to prevent multiple being sent
+        accCfg.natConfig.iceEnabled = true
+        accCfg.natConfig.iceMaxHostCands = 1   // Only 1 host candidate (best interface)
+        accCfg.natConfig.iceNoRtcp = true       // Disable RTCP ICE component (rtcpMux is already on)
+
+        Log.i(TAG, "🧊 ICE Config | enabled=${accCfg.natConfig.iceEnabled}" +
+            " | maxHostCands=${accCfg.natConfig.iceMaxHostCands}" +
+            " | noRtcp=${accCfg.natConfig.iceNoRtcp}" +
+            " | rtcpMux=${mediaConfig.rtcpMuxEnabled}")
+
         val regHeaders = accCfg.regConfig.headers
         regHeaders.add(SipHeader().apply {
             hName = "token"
