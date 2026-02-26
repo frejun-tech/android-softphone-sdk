@@ -40,7 +40,7 @@ internal class SipUserAgent(private val context: Context) {
     fun start(creds: SipCredentials, domain: String) {
         Log.i(TAG, "🚀 start() | User: ${creds.username} | Domain: $domain")
         this.sipCreds = creds
-        this.edgeDomain = "sip.sg.frejun.com"
+        this.edgeDomain = domain
 
         sipScope.launch {
             try {
@@ -52,6 +52,7 @@ internal class SipUserAgent(private val context: Context) {
 //                epConfig.uaConfig.mainThreadOnly = false
 
                 val uaConfig = epConfig.uaConfig
+                uaConfig.stunServer.clear()
                 val stunServers = StringVector()
                 stunServers.add("stun.l.google.com:19302")
                 uaConfig.stunServer = stunServers
@@ -142,6 +143,12 @@ internal class SipUserAgent(private val context: Context) {
 
         accCfg.natConfig.sipStunUse = pjsua_stun_use.PJSUA_STUN_USE_DEFAULT
         accCfg.natConfig.mediaStunUse = pjsua_stun_use.PJSUA_STUN_USE_DEFAULT
+
+        accCfg.natConfig.iceMaxHostCands = 1
+
+        accCfg.natConfig.turnEnabled = false;
+
+        accCfg.natConfig.iceEnabled = false;
 
         val regHeaders = accCfg.regConfig.headers
         regHeaders.add(SipHeader().apply {
