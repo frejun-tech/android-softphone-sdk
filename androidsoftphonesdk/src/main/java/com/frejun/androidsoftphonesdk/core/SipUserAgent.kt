@@ -55,6 +55,7 @@ internal class SipUserAgent(private val context: Context) {
                 uaConfig.stunServer.clear()
                 val stunServers = StringVector()
                 stunServers.add("stun.l.google.com:19302")
+                Log.i(TAG,"stunServer :- $stunServers")
                 uaConfig.stunServer = stunServers
 
                 val logConfig = epConfig.logConfig
@@ -63,6 +64,15 @@ internal class SipUserAgent(private val context: Context) {
                 logConfig.msgLogging = 1
                 logConfig.writer = logWriter
                 logConfig.decor = logConfig.decor and (pj_log_decoration.PJ_LOG_HAS_CR or pj_log_decoration.PJ_LOG_HAS_NEWLINE).inv().toLong()
+
+                val medConfig = epConfig.medConfig
+                medConfig.hasIoqueue = true
+                medConfig.threadCnt = 1
+                medConfig.quality = 10
+
+                medConfig.ecOptions = pjmedia_echo_flag.PJMEDIA_ECHO_WEBRTC.toLong() or
+                        pjmedia_echo_flag.PJMEDIA_ECHO_USE_NOISE_SUPPRESSOR.toLong()
+                medConfig.ecTailLen = 100
 
                 endpoint!!.libInit(epConfig)
                 Log.d(TAG, "✔ PJSIP libInit() successful")
@@ -85,15 +95,12 @@ internal class SipUserAgent(private val context: Context) {
                     endpoint!!.videoCodecSetPriority(videoCodecs[i].codecId, 0)
                 }
 
-                // Disable T.140 and RED text codecs
-                val allCodecs = endpoint!!.codecEnum2()
-                for (i in 0 until allCodecs.size) {
-                    Log.i(TAG,"Disabling codec: ${allCodecs[i].codecId}");
-                    val codecId = allCodecs[i].codecId
-                    if (codecId.startsWith("t140") || codecId.startsWith("red")) {
-                        endpoint!!.codecSetPriority(codecId, 0)
-                    }
-                }
+//                val allCodecs = endpoint!!.codecEnum2()
+//                for (i in 0 until allCodecs.size) {
+//                    Log.i(TAG,"Disabling codec: ${allCodecs[i].codecId}");
+//                    val codecId = allCodecs[i].codecId
+//                    endpoint!!.codecSetPriority(codecId, 0)
+//                }
 
                 withContext(Dispatchers.Main) {
                     listener?.onConnectionStateChanged("UserAgentState", "Connected", false)
@@ -144,11 +151,15 @@ internal class SipUserAgent(private val context: Context) {
         accCfg.natConfig.sipStunUse = pjsua_stun_use.PJSUA_STUN_USE_DEFAULT
         accCfg.natConfig.mediaStunUse = pjsua_stun_use.PJSUA_STUN_USE_DEFAULT
 
-        accCfg.natConfig.iceMaxHostCands = 1
+        // ICE configuration: limit candidates to prevent multiple being sent
+        accCfg.natConfig.iceEnabled = true
+        accCfg.natConfig.iceMaxHostCands = 1   // Only 1 host candidate (best interface)
+        accCfg.natConfig.iceNoRtcp = true       // Disable RTCP ICE component (rtcpMux is already on)
 
-        accCfg.natConfig.turnEnabled = false;
-
-        accCfg.natConfig.iceEnabled = false;
+        Log.i(TAG, "🧊 ICE Config | enabled=${accCfg.natConfig.iceEnabled}" +
+            " | maxHostCands=${accCfg.natConfig.iceMaxHostCands}" +
+            " | noRtcp=${accCfg.natConfig.iceNoRtcp}" +
+            " | rtcpMux=${mediaConfig.rtcpMuxEnabled}")
 
         val regHeaders = accCfg.regConfig.headers
         regHeaders.add(SipHeader().apply {
