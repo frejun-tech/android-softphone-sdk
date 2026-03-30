@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
@@ -8,102 +9,166 @@
     android:padding="16dp"
     tools:context=".MainActivity">
 
+    <TextView
+        android:id="@+id/titleTextView"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="FreJun Softphone"
+        android:textSize="28sp"
+        android:textStyle="bold"
+        android:layout_marginBottom="24dp"/>
+
+    <ProgressBar
+        android:id="@+id/loadingIndicator"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:visibility="gone"
+        tools:visibility="visible"/>
+
     <!-- ONLY visible when user is NOT logged in -->
     <Button
         android:id="@+id/loginButton"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:text="Login with FreJun"
-        android:visibility="visible" />
+        android:visibility="gone"
+        tools:visibility="visible"/>
 
     <!-- Container for everything else: Visible ONLY when logged in -->
     <LinearLayout
         android:id="@+id/authenticatedRootLayout"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
+        android:layout_height="match_parent"
         android:orientation="vertical"
-        android:gravity="center_horizontal"
+        android:gravity="top|center_horizontal"
         android:visibility="gone"
         tools:visibility="visible">
 
-        <TextView
-            android:id="@+id/statusTextView"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Status: Not Initialized"
-            android:textSize="18sp"
-            android:textStyle="bold"
-            android:layout_marginBottom="24dp"/>
-
-        <Button
-            android:id="@+id/connectButton"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Start &amp; Connect SIP"
-            android:layout_marginTop="8dp"/>
-
-        <EditText
-            android:id="@+id/destinationEditText"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:hint="Enter number (e.g., +15551234567)"
-            android:inputType="phone"
-            android:layout_marginTop="24dp"/>
-
-        <Button
-            android:id="@+id/callButton"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Make Call" />
-
-        <!-- Incoming Call Controls -->
         <LinearLayout
-            android:id="@+id/incomingCallLayout"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:visibility="gone"
-            android:layout_marginTop="24dp"
-            android:gravity="center">
-
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginBottom="24dp">
             <TextView
-                android:id="@+id/incomingCallTextView"
+                android:id="@+id/statusTextView"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                tools:text="Status: Connected"
+                android:textSize="18sp"
+                android:textStyle="bold"/>
+            <Button
+                android:id="@+id/logoutButton"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Incoming Call..."
-                android:textSize="16sp"/>
+                android:text="Logout"/>
+        </LinearLayout>
 
+        <!-- Dialer Card -->
+        <androidx.cardview.widget.CardView
+            android:id="@+id/dialerCard"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_margin="8dp"
+            app:cardCornerRadius="8dp"
+            app:cardElevation="4dp">
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:layout_marginTop="8dp">
+                android:orientation="vertical"
+                android:padding="16dp">
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="MAKE A CALL"
+                    android:textSize="12sp"
+                    android:textStyle="bold"/>
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Calling From:"
+                    android:layout_marginTop="16dp"/>
+                <TextView
+                    android:id="@+id/virtualNumberSelector"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Select Number ▼"
+                    android:padding="12dp"
+                    android:background="@android:drawable/editbox_background_normal"/>
+
+                <EditText
+                    android:id="@+id/destinationEditText"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:hint="Enter number (e.g., +15551234567)"
+                    android:inputType="phone"
+                    android:layout_marginTop="16dp"/>
 
                 <Button
-                    android:id="@+id/answerButton"
-                    android:layout_width="0dp"
+                    android:id="@+id/callButton"
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:layout_marginEnd="8dp"
-                    android:text="Answer"
-                    android:backgroundTint="#4CAF50"/>
-
-                <Button
-                    android:id="@+id/hangupButton"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="Hangup"
-                    android:backgroundTint="#F44336"/>
+                    android:text="Call"
+                    android:layout_marginTop="8dp"/>
             </LinearLayout>
-        </LinearLayout>
+        </androidx.cardview.widget.CardView>
 
-        <Button
-            android:id="@+id/logoutButton"
+
+        <!-- Incoming/Active Call Card -->
+        <androidx.cardview.widget.CardView
+            android:id="@+id/callCard"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Logout &amp; Stop"
-            android:layout_marginTop="40dp"/>
-    </LinearLayout>
+            android:visibility="gone"
+            tools:visibility="visible"
+            android:layout_margin="8dp"
+            app:cardCornerRadius="8dp"
+            app:cardElevation="4dp">
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="16dp"
+                android:gravity="center_horizontal">
 
+                <TextView
+                    android:id="@+id/callStatusTitle"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    tools:text="Incoming Call"
+                    android:textSize="16sp"
+                    android:textStyle="bold"/>
+                <TextView
+                    android:id="@+id/remoteContactTextView"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    tools:text="+1234567890"
+                    android:textSize="24sp"
+                    android:layout_marginTop="8dp"/>
+
+                <LinearLayout
+                    android:id="@+id/callActionsLayout"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center"
+                    android:layout_marginTop="24dp">
+                    <Button
+                        android:id="@+id/hangupButton"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Hangup"/>
+                    <Button
+                        android:id="@+id/answerButton"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Answer"
+                        android:layout_marginStart="16dp"/>
+                </LinearLayout>
+            </LinearLayout>
+        </androidx.cardview.widget.CardView>
+
+    </LinearLayout>
 </LinearLayout>

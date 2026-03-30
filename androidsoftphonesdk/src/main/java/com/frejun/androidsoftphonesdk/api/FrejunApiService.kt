@@ -41,9 +41,19 @@ internal interface FrejunApiService {
     suspend fun retrieveUserRoles(
         @Query("email") email: String
     ): UserRolesResponse
+
+    @PATCH("auth/update-userprofile/")
+    suspend fun updateUserProfile(
+        @Query("email") email: String,
+        @Body updateUserProfileRequest: UpdateUserProfileRequest
+    ): UserProfileResponse
 }
 
 // --- Data classes for API Models ---
+
+data class UpdateUserProfileRequest(
+    @SerializedName("primary_vn") val primaryVn: String
+)
 
 data class TokenResponse(
     @SerializedName("access_token") val accessToken: String,

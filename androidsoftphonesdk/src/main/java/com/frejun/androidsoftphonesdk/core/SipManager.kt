@@ -1,5 +1,3 @@
-// File: sip/AndroidSoftphoneSDK/src/main/java/com/frejun/androidsoftphonesdk/core/SipManager.kt
-
 package com.frejun.androidsoftphonesdk.core
 
 import android.content.Context
@@ -13,31 +11,49 @@ internal class SipManager(private val context: Context) {
     private var userAgent: SipUserAgent? = null
     private var listener: SoftphoneListener? = null
 
-    fun setListener(l: SoftphoneListener) {
+    fun setListener(l: SoftphoneListener?) {
         this.listener = l
+        userAgent?.setListener(l)
     }
 
     fun isStarted(): Boolean = (userAgent != null)
 
     fun start(sipCreds: SipCredentials, edgeDomain: String) {
         Log.i(TAG, "start: Initializing SIP flow")
-        val l = listener ?: run {
-            Log.e(TAG, "start: FAILED. No listener attached.")
-            return
-        }
 
         if (userAgent == null) {
             Log.i(TAG, "start: Creating and starting new SipUserAgent")
             userAgent = SipUserAgent(context)
-            userAgent!!.start(sipCreds, edgeDomain, l)
+            userAgent!!.setListener(this.listener)
+            userAgent!!.start(sipCreds, edgeDomain)
         } else {
             Log.w(TAG, "start: SipUserAgent already initialized.")
+            userAgent!!.setListener(this.listener)
+            userAgent!!.start(sipCreds, edgeDomain)
         }
     }
 
+    suspend fun restart(sipCreds: SipCredentials, edgeDomain: String) {
+        Log.i(TAG, "Restarting SIP flow for new edge domain: $edgeDomain")
+        stop()
+        kotlinx.coroutines.delay(500)
+        start(sipCreds, edgeDomain)
+    }
+
     fun makeCall(destination: String, metadata: CallMetaData, sipToken: String) {
+        Log.d(TAG, "makeCall: Forwarding request to SipUserAgent.")
         userAgent?.makeCall(destination, metadata, sipToken)
             ?: Log.e(TAG, "makeCall: FAILED. UserAgent is not started.")
+    }
+
+    fun answerCall(session: CallSession) {
+        userAgent?.answerCall(session)
+            ?: Log.e(TAG, "answerCall: FAILED. UserAgent is not started.")
+    }
+
+    fun hangupCall(session: CallSession) {
+        userAgent?.hangupCall(session)
+            ?: Log.e(TAG, "hangupCall: FAILED. UserAgent is not started.")
     }
 
     fun stop() {
